@@ -27,10 +27,7 @@ interface Message {
 export default function Chat() {
     const [showChat, setShowChat] = useState(true);
     const [chatInput, setChatInput] = useState('');
-    const [messages, setMessages] = useState<Message[]>([
-        { id: '1', sender: 'crush', text: 'Pronta pra assistir! 🍿', time: '21:30' },
-        { id: '2', sender: 'you', text: 'Solta o play então! ❤️', time: '21:31' },
-    ]);
+    const [messages, setMessages] = useState<Message[]>([]);
 
     const [chatHeight, setChatHeight] = useState(220);
     const isResizing = useRef(false);
@@ -67,7 +64,7 @@ export default function Chat() {
             const delta = startY - event.clientY;
 
             setChatHeight(
-            Math.min(600, Math.max(120, startHeight + delta))
+            Math.min(600, Math.max(50, startHeight + delta))
             );
         };
 
@@ -191,7 +188,7 @@ export default function Chat() {
           {/* Field para enviar */}
           <Group gap={6} mt={2}>
             <TextInput
-              placeholder="Fala algo fofo..."
+              placeholder="Diga algo ..."
               size="xs"
               radius="xl"
               value={chatInput}
