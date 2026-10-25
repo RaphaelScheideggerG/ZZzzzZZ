@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent, useRef } from 'react';
 import {
   ActionIcon,
   Box,
@@ -13,6 +13,16 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { IconPlus, IconSearch } from '@tabler/icons-react';
+
+import type { RoomState } from '../hooks/useZzzRoom';
+
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
 
 type SearchResult = {
   videoId: string;
@@ -49,7 +59,6 @@ function isYouTubeUrl(input: string): boolean {
   return /(?:youtube\.com|youtu\.be|youtube-nocookie\.com)/i.test(input);
 }
 
-/** Extracts an 11-character video ID from common YouTube link formats. */
 function getYouTubeVideoId(input: string): string | null {
   let url: URL;
   try {
@@ -85,39 +94,140 @@ function getSearchError(response: YouTubeSearchResponse, status: number): string
   const reason = response.error?.errors?.[0]?.reason;
 
   if (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded') {
-    return 'A cota diária da busca do YouTube foi atingida. Tente novamente amanhã.';
+    return 'A cota diária da busca do YouTube foi atingida.';
   }
   if (reason === 'keyInvalid') {
-    return 'A chave da API parece inválida. Confira VITE_YOUTUBE_API_KEY no .env.local.';
-  }
-  if (reason === 'accessNotConfigured') {
-    return 'Ative a YouTube Data API v3 no projeto do Google Cloud usado pela chave.';
+    return 'A chave da API parece inválida em VITE_YOUTUBE_API_KEY.';
   }
   if (status === 403) {
-    return 'O Google recusou a chave. Confira as restrições da chave, a API ativada e a cota.';
+    return 'O Google recusou a chave. Confira as restrições no Google Cloud.';
   }
-  if (status === 400) {
-    return 'A busca foi recusada. Confira a configuração da API e tente outro termo.';
-  }
-
-  return response.error?.message || 'Não foi possível buscar vídeos agora. Confira a conexão e tente novamente.';
+  return response.error?.message || 'Não foi possível buscar vídeos agora.';
 }
 
-export default function Video() {
-  const [videoId, setVideoId] = useState<string | null>(null);
+type VideoProps = {
+  roomState: RoomState | null;
+  onSelectVideo: (videoId: string) => Promise<void>;
+};
+
+export default function Video({ roomState, onSelectVideo }: VideoProps) {  
+  // Local states
   const [query, setQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // Public states for synchronization 
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [speed, setSpeed] = useState<number>(1.0);
 
-  const selectVideo = (id: string) => {
-    setVideoId(id);
-    setShowSearch(false);
-    setQuery('');
-    setSearchResults([]);
+  const playerRef = useRef<any>(null);
+  
+  // O vídeo escolhido é salvo no estado compartilhado da sala.
+  const selectVideo = async (id: string) => {
     setError('');
+    try {
+      await onSelectVideo(id);
+      setShowSearch(false);
+      setQuery('');
+      setSearchResults([]);
+    } catch (selectionError) {
+      setError(
+        selectionError instanceof Error
+          ? selectionError.message
+          : 'Não foi possível selecionar esse vídeo na sala.',
+      );
+    }
   };
+
+  // Se outra pessoa trocar o vídeo, o player desta tela acompanha a sala.
+  useEffect(() => {
+    setVideoId(roomState?.video_id ?? null);
+  }, [roomState?.video_id]);
+
+  // 1. Inicializa o Player do YouTube
+  useEffect(() => {
+    if (!videoId) return;
+
+    const initPlayer = () => {
+      if (playerRef.current && typeof playerRef.current.loadVideoById === 'function') {
+        playerRef.current.loadVideoById(videoId);
+        playerRef.current.setPlaybackRate(speed);
+        return;
+      }
+
+      window.YT.ready(() => {
+        playerRef.current = new window.YT.Player('yt-player-box', {
+          height: '100%',
+          width: '100%',
+          videoId: videoId,
+          playerVars: {
+            autoplay: 1,
+            rel: 0,
+            playsinline: 1,
+            modestbranding: 1,
+          },
+          events: {
+            onReady: (event: any) => {
+              console.log('🎬 Player do YouTube pronto e rodando!');
+              event.target.setPlaybackRate(speed);
+              event.target.playVideo();
+            },
+
+            onPlaybackRateChange: (event: any) => {
+              console.log('⚡ Velocidade alterada para:', event.data);
+              setSpeed(event.data); // <-- Atualiza o state de velocidade
+            },
+
+            onStateChange: (event: any) => {
+              // 1 = Reproduzindo (Play), 2 = Pausado (Pause)
+              if (event.data === 1) {
+                console.log('▶️ Play acionado!');
+              }
+              if (event.data === 2) {
+                console.log('⏸️ Pause acionado!');
+              }
+            },
+          },
+        });
+      });
+    };
+
+    if (!window.YT || !window.YT.Player) {
+      if (!document.getElementById('youtube-iframe-api')) {
+        const tag = document.createElement('script');
+        tag.id = 'youtube-iframe-api';
+        tag.src = 'https://www.youtube.com/iframe_api';
+        document.body.appendChild(tag);
+      }
+      window.onYouTubeIframeAPIReady = initPlayer;
+
+      const checkInterval = setInterval(() => {
+        if (window.YT && window.YT.Player) {
+          clearInterval(checkInterval);
+          initPlayer();
+        }
+      }, 100);
+
+      return () => clearInterval(checkInterval);
+    } else {
+      initPlayer();
+    }
+  }, [videoId]);
+
+  // 2. Sempre que o speed mudar, aplica no player
+  useEffect(() => {
+    if (playerRef.current && typeof playerRef.current.setPlaybackRate === 'function') {
+      playerRef.current.setPlaybackRate(speed);
+    }
+  }, [speed]);
+
+  // 3. Sempre que o vídeo despausar, sincroniza tempo e velocidade com a sala
+  // Apenas exemplo esboço
+  useEffect(() => {
+    if (!playerRef.current || !roomState) return;
+  }, [roomState]);
 
   const handleSearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -127,19 +237,18 @@ export default function Video() {
     setError('');
     setSearchResults([]);
 
-    // Link direto não precisa consumir a cota da API de busca.
     if (isYouTubeUrl(input)) {
       const id = getYouTubeVideoId(input);
       if (!id) {
-        setError('Esse link não parece conter um ID de vídeo válido do YouTube.');
+        setError('Link de vídeo inválido.');
         return;
       }
-      selectVideo(id);
+      void selectVideo(id);
       return;
     }
 
     if (!YOUTUBE_API_KEY) {
-      setError('Falta configurar VITE_YOUTUBE_API_KEY no arquivo .env.local. Veja SETUP.md.');
+      setError('Falta configurar VITE_YOUTUBE_API_KEY no .env.local.');
       return;
     }
 
@@ -183,10 +292,10 @@ export default function Video() {
 
       setSearchResults(results);
       if (results.length === 0) {
-        setError('Não encontrei vídeos para essa busca. Tente outras palavras.');
+        setError('Nenhum vídeo encontrado.');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha inesperada ao buscar vídeos.');
+      setError(err instanceof Error ? err.message : 'Falha ao buscar vídeos.');
     } finally {
       setLoading(false);
     }
@@ -207,17 +316,18 @@ export default function Video() {
         borderRadius: 12,
       }}
     >
-      {videoId ? (
-        <iframe
-          key={videoId}
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1`}
-          title="ZZzzzzz — player de vídeo"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          referrerPolicy="strict-origin-when-cross-origin"
-          allowFullScreen
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
-        />
-      ) : (
+      <Box
+        id="yt-player-box"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          display: videoId ? 'block' : 'none',
+        }}
+      />
+
+      {!videoId && (
         <Stack align="center" gap="xs" style={{ userSelect: 'none', pointerEvents: 'none' }}>
           <Text size="xl">🌙</Text>
           <Text c="gray.5" size="sm" fw={500}>
@@ -229,8 +339,7 @@ export default function Video() {
       <Box pos="absolute" top={14} left={14} style={{ zIndex: 5 }}>
         <ActionIcon
           type="button"
-          aria-label={showSearch ? 'Fechar busca' : 'Buscar vídeo'}
-          title={showSearch ? 'Fechar busca' : 'Buscar vídeo'}
+          aria-label="Buscar vídeo"
           variant="subtle"
           color="gray"
           radius="xl"
@@ -278,7 +387,6 @@ export default function Video() {
                 <Group gap="xs" wrap="nowrap">
                   <TextInput
                     autoFocus
-                    aria-label="Buscar vídeos ou colar link do YouTube"
                     placeholder="Digite uma busca ou cole um link..."
                     size="sm"
                     variant="unstyled"
@@ -292,7 +400,6 @@ export default function Video() {
                   />
                   <ActionIcon
                     type="submit"
-                    aria-label="Pesquisar"
                     variant="filled"
                     color="pink"
                     radius="xl"
@@ -306,17 +413,8 @@ export default function Video() {
               </Paper>
 
               {error && (
-                <Paper
-                  p="sm"
-                  radius="md"
-                  style={{
-                    background: 'rgba(16, 16, 20, 0.95)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                  }}
-                >
-                  <Text size="xs" c="red.3" role="status">
-                    {error}
-                  </Text>
+                <Paper p="sm" radius="md" style={{ background: 'rgba(16, 16, 20, 0.95)', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
+                  <Text size="xs" c="red.3">{error}</Text>
                 </Paper>
               )}
 
@@ -336,7 +434,7 @@ export default function Video() {
                       {searchResults.map((video) => (
                         <UnstyledButton
                           key={video.videoId}
-                          onClick={() => selectVideo(video.videoId)}
+                          onClick={() => void selectVideo(video.videoId)}
                           style={{
                             display: 'block',
                             width: '100%',

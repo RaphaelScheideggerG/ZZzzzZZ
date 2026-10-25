@@ -1,10 +1,26 @@
 import { Box } from '@mantine/core';
+import type { ChatMessage, RoomState } from '../hooks/useZzzRoom';
 
 import Video from './Video';
 import Chat from './Chat';
 
-  
-export default function Player() {
+type PlayerProps = {
+  roomState: RoomState | null;
+  onSelectVideo: (videoId: string) => Promise<void>;
+
+  // Dados e ação do chat, recebidos do hook.
+  messages: ChatMessage[];
+  userId: string | null;
+  onSendMessage: (body: string) => Promise<void>;
+};
+
+export default function Player({
+  roomState,
+  onSelectVideo,
+  messages,
+  userId,
+  onSendMessage,
+}: PlayerProps) {
   return (
     <Box
       pos="relative"
@@ -18,8 +34,16 @@ export default function Player() {
         overflow: 'hidden',
       }}
     >
-      <Video />
-      <Chat />
+      <Video
+        roomState={roomState}
+        onSelectVideo={onSelectVideo}
+      />
+
+      <Chat
+        messages={messages}
+        userId={userId}
+        onSendMessage={onSendMessage}
+      />
     </Box>
   );
 }
