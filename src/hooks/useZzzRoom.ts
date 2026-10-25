@@ -6,7 +6,8 @@ export type RoomState = {
   room_id: string;
   video_id: string | null;
   is_playing: boolean;
-  current_time: number;
+  current_seconds: number;
+  playback_rate: number;
   updated_by: string | null;
   updated_at: string;
 };
@@ -218,12 +219,70 @@ export function useZzzRoom({ inviteCode, displayName, enabled }: UseZzzRoomOptio
     };
   }, [enabled, inviteCode, displayName]);
 
+  useEffect(() => {
+    if (
+      !enabled ||
+      status !== 'connected' ||
+      !roomId ||
+      !userId
+    ) {
+      return;
+    }
+
+    let active = true;
+    let heartbeatInFlight = false;
+
+    const heartbeat = async () => {
+      if (!active || heartbeatInFlight) return;
+
+      heartbeatInFlight = true;
+
+      try {
+        const { error: heartbeatError } = await supabase.rpc(
+          'zz_heartbeat_room',
+          {
+            p_room_id: roomId,
+          },
+        );
+
+        if (heartbeatError && active) {
+          console.error(
+            '[ZZzzzzz] Falha ao renovar a atividade da sala:',
+            heartbeatError.message,
+          );
+        }
+      } catch (heartbeatError) {
+        if (active) {
+          console.error(
+            '[ZZzzzzz] Erro inesperado no heartbeat:',
+            heartbeatError,
+          );
+        }
+      } finally {
+        heartbeatInFlight = false;
+      }
+    };
+
+    // Registra a atividade assim que a conexão estiver pronta.
+    void heartbeat();
+
+    // Continua renovando enquanto a sala estiver conectada.
+    const intervalId = window.setInterval(() => {
+      void heartbeat();
+    }, 30_000);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [enabled, status, roomId, userId]);
+
   const selectVideo = useCallback(
     async (videoId: string) => {
       if (!roomId || !userId) return;
       const { data, error: updateError } = await supabase
         .from('zz_room_state')
-        .update({ video_id: videoId, is_playing: true, current_time: 0, updated_by: userId })
+        .update({ video_id: videoId, is_playing: true, current_seconds: 0, updated_by: userId })
         .eq('room_id', roomId)
         .select('*')
         .single();
@@ -242,7 +301,7 @@ export function useZzzRoom({ inviteCode, displayName, enabled }: UseZzzRoomOptio
       const safeTime = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
       const { data, error: updateError } = await supabase
         .from('zz_room_state')
-        .update({ current_time: safeTime, is_playing: isPlaying, updated_by: userId })
+        .update({ current_seconds: safeTime, is_playing: isPlaying, updated_by: userId })
         .eq('room_id', roomId)
         .select('*')
         .single();
@@ -278,8 +337,6 @@ export function useZzzRoom({ inviteCode, displayName, enabled }: UseZzzRoomOptio
         .from('zz_messages')
         .insert({
           room_id: roomId,
-          sender_id: userId,
-          sender_name: displayName.trim().slice(0, 40),
           body: cleanBody,
         })
         .select('*')
