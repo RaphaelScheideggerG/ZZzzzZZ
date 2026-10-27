@@ -1,0 +1,126 @@
+import { useCallback, useRef } from 'react';
+import type {
+  PendingRoomCommand,
+  PlaybackRuntime,
+  PlaybackSample,
+  SavePlayback,
+  BroadcastPlayback,
+} from './playbackSyncTypes';
+
+type UsePlaybackRuntimeOptions = {
+  videoId: string | null;
+  onSavePlayback: SavePlayback;
+  onBroadcastPlayback: BroadcastPlayback;
+};
+
+/** Stores shared refs and stable helpers used by the playback sub-hooks. */
+export function usePlaybackRuntime({
+  videoId,
+  onSavePlayback,
+  onBroadcastPlayback,
+}: UsePlaybackRuntimeOptions) {
+  const videoIdRef = useRef<string | null>(videoId);
+  const callbacksRef = useRef({ onSavePlayback, onBroadcastPlayback });
+  const pendingRoomCommandRef = useRef<PendingRoomCommand | null>(null);
+  const lastLoadedVideoIdRef = useRef<string | null>(null);
+  const lastAppliedRoomCommandKeyRef = useRef<string | null>(null);
+  const hasAppliedRoomCommandRef = useRef(false);
+  const lastAppliedSignalKeyRef = useRef<string | null>(null);
+  const suppressEventsUntilRef = useRef(0);
+  const lastPersistedAtRef = useRef(0);
+  const lastSampleRef = useRef<PlaybackSample | null>(null);
+
+  videoIdRef.current = videoId;
+  callbacksRef.current = { onSavePlayback, onBroadcastPlayback };
+
+  const publishPlayback = useCallback(
+    (
+      targetVideoId: string,
+      currentSeconds: number,
+      isPlaying: boolean,
+    ) => {
+      const safeSeconds = Number.isFinite(currentSeconds)
+        ? Math.max(0, currentSeconds)
+        : 0;
+      const sentAt = Date.now();
+
+      lastPersistedAtRef.current = sentAt;
+      lastSampleRef.current = {
+        videoId: targetVideoId,
+        time: safeSeconds,
+        wall: sentAt,
+        state: isPlaying ? 1 : 2,
+      };
+
+      void callbacksRef.current
+        .onSavePlayback(safeSeconds, isPlaying)
+        .catch((saveError) => {
+          console.error(
+            '[ZZzzzzz] Falha ao salvar a reprodução:',
+            saveError,
+          );
+        });
+
+      void callbacksRef.current
+        .onBroadcastPlayback({
+          videoId: targetVideoId,
+          currentTime: safeSeconds,
+          isPlaying,
+          sentAt,
+        })
+        .catch((broadcastError) => {
+          console.error(
+            '[ZZzzzzz] Falha ao transmitir a reprodução:',
+            broadcastError,
+          );
+        });
+    },
+    [],
+  );
+
+  const applyRoomCommand = useCallback(
+    (player: any, command: PendingRoomCommand) => {
+      const now = Date.now();
+      const currentSeconds = Number(player.getCurrentTime?.()) || 0;
+      const currentState = Number(player.getPlayerState?.());
+
+      suppressEventsUntilRef.current = now + 1400;
+      lastPersistedAtRef.current = now;
+
+      if (Math.abs(currentSeconds - command.currentSeconds) > 1.5) {
+        player.seekTo(command.currentSeconds, true);
+      }
+
+      if (command.isPlaying) {
+        if (currentState !== 1) player.playVideo();
+      } else if (currentState !== 2) {
+        player.pauseVideo();
+      }
+
+      lastSampleRef.current = {
+        videoId: command.videoId,
+        time: command.currentSeconds,
+        wall: now,
+        state: command.isPlaying ? 1 : 2,
+      };
+
+      pendingRoomCommandRef.current = null;
+    },
+    [],
+  );
+
+  const runtime: PlaybackRuntime = {
+    videoIdRef,
+    callbacksRef,
+    pendingRoomCommandRef,
+    lastLoadedVideoIdRef,
+    lastAppliedRoomCommandKeyRef,
+    hasAppliedRoomCommandRef,
+    lastAppliedSignalKeyRef,
+    suppressEventsUntilRef,
+    lastPersistedAtRef,
+    lastSampleRef,
+  };
+
+  return { runtime, publishPlayback, applyRoomCommand };
+}

@@ -38,6 +38,9 @@ export default function Room({
     error,
     selectVideo,
     sendMessage,
+    playbackSignal,
+    savePlayback,
+    broadcastPlayback,
   } = useZzzRoom({
     inviteCode,
     displayName,
@@ -77,6 +80,9 @@ export default function Room({
           messages={messages}
           userId={userId}
           onSendMessage={sendMessage}
+          playbackSignal={playbackSignal}
+          onSavePlayback={savePlayback}
+          onBroadcastPlayback={broadcastPlayback}
         />
       </Box>
 

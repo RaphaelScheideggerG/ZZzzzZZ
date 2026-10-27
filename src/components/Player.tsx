@@ -1,17 +1,35 @@
 import { Box } from '@mantine/core';
-import type { ChatMessage, RoomState } from '../hooks/useZzzRoom';
 
-import Video from './Video';
+import type {
+  ChatMessage,
+  RoomState,
+  PlaybackSignal,
+} from '../hooks/useZzzRoom';
+
+import Video from './video/Video';
 import Chat from './Chat';
 
 type PlayerProps = {
   roomState: RoomState | null;
   onSelectVideo: (videoId: string) => Promise<void>;
 
-  // Dados e ação do chat, recebidos do hook.
+  // Dados e ações do chat.
   messages: ChatMessage[];
   userId: string | null;
   onSendMessage: (body: string) => Promise<void>;
+
+  // Dados e ações de sincronização do player.
+  playbackSignal: PlaybackSignal | null;
+
+  onSavePlayback: (
+    currentSeconds: number,
+    isPlaying: boolean,
+    playbackRate?: number,
+  ) => Promise<void>;
+
+  onBroadcastPlayback: (
+    signal: Omit<PlaybackSignal, 'userId'>,
+  ) => Promise<void>;
 };
 
 export default function Player({
@@ -20,6 +38,9 @@ export default function Player({
   messages,
   userId,
   onSendMessage,
+  playbackSignal,
+  onSavePlayback,
+  onBroadcastPlayback,
 }: PlayerProps) {
   return (
     <Box
@@ -37,6 +58,10 @@ export default function Player({
       <Video
         roomState={roomState}
         onSelectVideo={onSelectVideo}
+        playbackSignal={playbackSignal}
+        userId={userId}
+        onSavePlayback={onSavePlayback}
+        onBroadcastPlayback={onBroadcastPlayback}
       />
 
       <Chat
