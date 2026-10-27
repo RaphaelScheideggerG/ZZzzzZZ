@@ -230,7 +230,11 @@ export default function Home({ onEnterRoom }: HomeProps) {
                 }}
               />
             )}
-
+            {error && (
+              <Text c="red" size="sm" role="alert">
+                {error}
+              </Text>
+            )}
             <Button
               fullWidth
               color="pink"

@@ -14,11 +14,14 @@ type UsePlaybackSignalsOptions = {
   playerRef: YouTubePlayerRef;
   handlersRef: { current: PlayerEventHandlers };
   runtime: PlaybackRuntime;
+
   publishPlayback: (
     videoId: string,
     currentSeconds: number,
     isPlaying: boolean,
+    playbackRate?: number,
   ) => void;
+
   applyRoomCommand: (
     player: any,
     command: { videoId: string; currentSeconds: number; isPlaying: boolean },
@@ -67,11 +70,12 @@ export function usePlaybackSignals({
 
       if (Date.now() < suppressEventsUntilRef.current) return;
 
-      publishPlayback(
-        reportedVideoId,
-        Number(player.getCurrentTime?.()) || 0,
-        event.data === 1,
-      );
+        publishPlayback(
+          reportedVideoId,
+          Number(player.getCurrentTime?.()) || 0,
+          event.data === 1,
+          Number(player.getPlaybackRate?.()) || speed,
+        );
     },
     [
       applyRoomCommand,
@@ -79,6 +83,7 @@ export function usePlaybackSignals({
       publishPlayback,
       suppressEventsUntilRef,
       videoIdRef,
+      speed,
     ],
   );
 
@@ -147,6 +152,17 @@ export function usePlaybackSignals({
     const targetSeconds = Math.max(0, signal.currentTime);
     const currentSeconds = Number(player.getCurrentTime?.()) || 0;
     const currentState = Number(player.getPlayerState?.());
+
+    const targetRate = Number(signal.playbackRate);
+
+    if (
+      Number.isFinite(targetRate) &&
+      targetRate > 0 &&
+      typeof player.setPlaybackRate === 'function'
+    ) {
+      player.setPlaybackRate(targetRate);
+      setSpeed(targetRate);
+    }
 
     suppressEventsUntilRef.current = Date.now() + 1100;
 
@@ -218,6 +234,7 @@ export function usePlaybackSignals({
           videoId: activeVideoId,
           currentTime: currentSeconds,
           isPlaying,
+          playbackRate: Number(player.getPlaybackRate?.()) || speed,
           sentAt: now,
         })
         .catch((broadcastError) => {
@@ -262,6 +279,7 @@ export function usePlaybackSignals({
     playerRef,
     suppressEventsUntilRef,
     videoIdRef,
+    speed,
   ]);
 
   // Keep the player's speed aligned with the latest local playback-rate event.
