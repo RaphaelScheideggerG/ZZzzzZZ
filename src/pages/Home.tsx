@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, } from 'react';
 import {
   Box,
   Button,
@@ -12,91 +12,14 @@ import {
   Select,
 } from '@mantine/core';
 
+import StarryBackground from '../components/StarryBackground';
+
 import { supabase } from '../lib/supabase';
 
 
 type HomeProps = {
   onEnterRoom: (displayName: string, inviteCode: string | null, capacity?: number) => void;
 };
-
-// Componente do fundo estrelado suave e animado
-function StarryBackground() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animationFrameId: number;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
-
-    const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-    };
-    window.addEventListener('resize', handleResize);
-
-    const stars = Array.from({ length: 70 }, () => ({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      size: Math.random() * 1.8 + 0.4,
-      alpha: Math.random(),
-      speed: Math.random() * 0.015 + 0.005,
-      increasing: Math.random() > 0.5,
-    }));
-
-    const render = () => {
-      ctx.clearRect(0, 0, width, height);
-
-      stars.forEach((star) => {
-        if (star.increasing) {
-          star.alpha += star.speed;
-          if (star.alpha >= 1) star.increasing = false;
-        } else {
-          star.alpha -= star.speed;
-          if (star.alpha <= 0.1) star.increasing = true;
-        }
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha.toFixed(2)})`;
-        if (star.size > 1.5) {
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = 'rgba(230, 73, 128, 0.6)';
-        }
-        ctx.fill();
-        ctx.restore();
-      });
-
-      animationFrameId = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, []);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
-        zIndex: 0,
-      }}
-    />
-  );
-}
 
 export default function Home({ onEnterRoom }: HomeProps) {
   const [displayName, setDisplayName] = useState('');
@@ -196,7 +119,6 @@ export default function Home({ onEnterRoom }: HomeProps) {
   return (
     <Box
       mih="100vh"
-      bg="#0b0a0c"
       c="white"
       pos="relative"
       style={{
@@ -205,9 +127,10 @@ export default function Home({ onEnterRoom }: HomeProps) {
         justifyContent: 'center',
         padding: '24px',
         overflow: 'hidden',
+        background:
+          'radial-gradient(ellipse at 50% 45%, #30203f 0%, #18121f 45%, #0b0a0c 100%)',
       }}
     >
-      {/* 1. FUNDO ESTRELADO CINTILANTE */}
       <StarryBackground />
 
       {/* 2. CONTEÚDO PRINCIPAL */}

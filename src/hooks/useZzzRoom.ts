@@ -26,6 +26,7 @@ export type PlaybackSignal = {
   videoId: string;
   currentTime: number;
   isPlaying: boolean;
+  playbackRate: number;
   sentAt: number;
 };
 
@@ -296,20 +297,42 @@ export function useZzzRoom({ inviteCode, displayName, enabled }: UseZzzRoomOptio
   );
 
   const savePlayback = useCallback(
-    async (currentTime: number, isPlaying: boolean) => {
+    async (
+      currentTime: number,
+      isPlaying: boolean,
+      playbackRate?: number,
+    ) => {
       if (!roomId || !userId) return;
-      const safeTime = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
+
+      const safeTime = Number.isFinite(currentTime)
+        ? Math.max(0, currentTime)
+        : 0;
+
+      const updateData = {
+        current_seconds: safeTime,
+        is_playing: isPlaying,
+        updated_by: userId,
+        ...(playbackRate !== undefined &&
+        Number.isFinite(playbackRate)
+          ? { playback_rate: playbackRate }
+          : {}),
+      };
+
       const { data, error: updateError } = await supabase
         .from('zz_room_state')
-        .update({ current_seconds: safeTime, is_playing: isPlaying, updated_by: userId })
+        .update(updateData)
         .eq('room_id', roomId)
         .select('*')
         .single();
+
       if (updateError) {
         setError(updateError.message);
         return;
       }
-      setRoomState((current) => newestState(current, data as RoomState));
+
+      setRoomState((current) =>
+        newestState(current, data as RoomState),
+      );
     },
     [roomId, userId],
   );
