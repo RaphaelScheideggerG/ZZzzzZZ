@@ -38,6 +38,7 @@ export function usePlaybackRuntime({
       targetVideoId: string,
       currentSeconds: number,
       isPlaying: boolean,
+      playbackRate = 1,
     ) => {
       const safeSeconds = Number.isFinite(currentSeconds)
         ? Math.max(0, currentSeconds)
@@ -66,6 +67,7 @@ export function usePlaybackRuntime({
           videoId: targetVideoId,
           currentTime: safeSeconds,
           isPlaying,
+          playbackRate,
           sentAt,
         })
         .catch((broadcastError) => {
